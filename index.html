@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Final Ball Challenge</title>
+    <title>Ultimate Ball Challenge</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body {
@@ -77,10 +77,11 @@
 
         function generateLevel(levelNum) {
             const features = {
-                reverse: levelNum % 2 === 0,
+                reverse: levelNum >= 3,
+                verticalPlatforms: levelNum >= 2,
                 movingPlatforms: levelNum >= 2,
-                fire: levelNum >= 3,
-                speedBoost: levelNum >= 4
+                fire: levelNum >= 4,
+                speedBoost: true
             };
 
             return {
@@ -96,11 +97,11 @@
             let y = canvas.height - 200;
             
             const params = {
-                maxVerticalGap: 80,
-                minHorizontalSpacing: 200,
-                maxHorizontalSpacing: 300,
-                minWidth: 300,
-                maxWidth: 400
+                maxVerticalGap: levelNum === 2 ? 80 : 100,
+                minHorizontalSpacing: levelNum === 2 ? 220 : 180,
+                maxHorizontalSpacing: levelNum === 2 ? 300 : 250,
+                minWidth: 200,
+                maxWidth: 300
             };
 
             for(let i = 0; i < 8 + levelNum; i++) {
@@ -112,20 +113,22 @@
                     x: x,
                     y: y,
                     w: w,
-                    spikes: Math.min(0.1 + (levelNum * 0.05), 0.5),
-                    moving: features.movingPlatforms && Math.random() > 0.7,
+                    spikes: Math.min(0.2 + (levelNum * 0.07), 0.7),
+                    moving: features.movingPlatforms && Math.random() > 0.5,
+                    vertical: features.verticalPlatforms && Math.random() > 0.6,
                     moveOffset: 0,
-                    fire: features.fire && Math.random() > 0.8
+                    fire: features.fire && Math.random() > 0.7,
+                    moveDirection: 1
                 };
 
                 platforms.push(platform);
                 x += w + spacing;
                 
                 y = Math.max(
-                    canvas.height - 350, 
+                    canvas.height - 400,
                     Math.min(
-                        canvas.height - 150, 
-                        y + (features.reverse ? -1 : 1) * (Math.random() * params.maxVerticalGap)
+                        canvas.height - 100, 
+                        y + (Math.random() * params.maxVerticalGap - params.maxVerticalGap/2)
                     )
                 );
             }
@@ -149,7 +152,7 @@
             }));
 
             gameState.scrollX = 0;
-            gameState.currentSpeed = gameState.baseSpeed + gameState.currentLevel;
+            gameState.currentSpeed = gameState.baseSpeed + gameState.currentLevel * 0.7;
             gameState.ball = {
                 x: level.direction === 1 ? 100 : canvas.width - 100,
                 y: canvas.height * 0.5,
@@ -166,10 +169,10 @@
         }
 
         function generateSpikes(width, density) {
-            return Array.from({length: Math.floor(width/40 * density)}, (_,i) => ({
-                x: 20 + i * 40,
-                width: 20,
-                height: 20
+            return Array.from({length: Math.floor(width/30 * density)}, (_,i) => ({
+                x: 15 + i * 30,
+                width: 25,
+                height: 35 + Math.random() * 20
             }));
         }
 
@@ -178,35 +181,43 @@
 
             const level = LEVELS[gameState.currentLevel];
             
-            // Постепенное ускорение
-            gameState.currentSpeed *= 1.0005;
+            // Плавное увеличение скорости
+            gameState.currentSpeed += 0.015;
             gameState.scrollX += gameState.currentSpeed * level.direction;
 
-            // Обновление движущихся платформ
+            // Движение платформ
             gameState.platforms.forEach(p => {
                 if(p.moving) {
-                    p.moveOffset = Math.sin(Date.now()/500) * 50;
+                    p.moveOffset = Math.sin(Date.now()/600) * 60;
+                }
+                if(p.vertical) {
+                    p.y += p.moveDirection;
+                    if(p.y > canvas.height - 150 || p.y < 100) {
+                        p.moveDirection *= -1;
+                    }
                 }
             });
 
-            gameState.ball.velocityY += 0.7;
+            gameState.ball.velocityY += 0.75;
             gameState.ball.y += gameState.ball.velocityY;
 
             let onGround = false;
             gameState.platforms.forEach(platform => {
                 const px = platform.x + (level.direction === 1 ? -gameState.scrollX : gameState.scrollX) + platform.moveOffset;
+                const py = platform.y;
                 
-                if(checkPlatformCollision(px, platform)) {
+                if(checkPlatformCollision(px, py, platform)) {
                     if(platform.color === '#FF4444') gameOver();
                     gameState.ball.velocityY = 0;
-                    gameState.ball.y = platform.y - gameState.ball.radius;
+                    gameState.ball.y = py - gameState.ball.radius;
+                    if(platform.vertical) gameState.ball.y -= 2;
                     onGround = true;
                     gameState.ball.jumpsLeft = 2;
                 }
 
                 platform.spikes.forEach(spike => {
                     const spikeX = px + spike.x;
-                    if(checkSpikeCollision(spikeX, spike, platform.y)) {
+                    if(checkSpikeCollision(spikeX, spike, py)) {
                         gameOver();
                         return;
                     }
@@ -216,11 +227,11 @@
             if(gameState.ball.y > canvas.height + 100) gameOver();
         }
 
-        function checkPlatformCollision(px, platform) {
+        function checkPlatformCollision(px, py, platform) {
             return gameState.ball.x + gameState.ball.radius > px &&
                    gameState.ball.x - gameState.ball.radius < px + platform.w &&
-                   gameState.ball.y + gameState.ball.radius > platform.y &&
-                   gameState.ball.y - gameState.ball.radius < platform.y + platform.height;
+                   gameState.ball.y + gameState.ball.radius > py &&
+                   gameState.ball.y - gameState.ball.radius < py + platform.height;
         }
 
         function checkSpikeCollision(spikeX, spike, platformY) {
@@ -236,17 +247,17 @@
             gameState.platforms.forEach(platform => {
                 const px = platform.x + (level.direction === 1 ? -gameState.scrollX : gameState.scrollX) + platform.moveOffset;
                 
-                // Рисование платформы
+                // Платформа
                 ctx.fillStyle = platform.color;
                 ctx.fillRect(px, platform.y, platform.w, platform.height);
 
-                // Рисование шипов
+                // Шипы
                 ctx.fillStyle = platform.spikeColor;
                 platform.spikes.forEach(spike => {
                     const spikeX = px + spike.x;
                     ctx.beginPath();
-                    ctx.moveTo(spikeX - 10, platform.y);
-                    ctx.lineTo(spikeX + 10, platform.y);
+                    ctx.moveTo(spikeX - 12, platform.y);
+                    ctx.lineTo(spikeX + 12, platform.y);
                     ctx.lineTo(spikeX, platform.y - spike.height);
                     ctx.fill();
                 });
@@ -254,11 +265,11 @@
                 // Анимация огня
                 if(platform.fire) {
                     ctx.fillStyle = `hsl(${Date.now() % 360}, 100%, 50%)`;
-                    ctx.fillRect(px, platform.y - 30, platform.w, 20);
+                    ctx.fillRect(px, platform.y - 40, platform.w, 30);
                 }
             });
 
-            // Рисование мяча
+            // Мяч
             ctx.beginPath();
             ctx.arc(gameState.ball.x, gameState.ball.y, gameState.ball.radius, 0, Math.PI*2);
             ctx.fillStyle = gameState.ball.color;
@@ -277,7 +288,7 @@
                 }
 
                 if(gameState.ball.jumpsLeft > 0) {
-                    gameState.ball.velocityY = -17;
+                    gameState.ball.velocityY = -18;
                     gameState.ball.jumpsLeft--;
                 }
             };
@@ -305,12 +316,13 @@
         }
 
         function checkLevelComplete() {
-            if(Math.abs(gameState.scrollX) > 2500 + gameState.currentLevel * 800) {
+            const levelCompleteDistance = 2500 + gameState.currentLevel * 700;
+            if(Math.abs(gameState.scrollX) > levelCompleteDistance) {
                 gameState.currentLevel++;
                 gameState.baseSpeed += 0.5;
                 
                 if(gameState.currentLevel > 10) {
-                    alert("ПОБЕДА! СЛЕДУЮЩИЙ РАУНД!");
+                    alert("ТЫ СТАЛ ЛЕГЕНДОЙ!");
                     gameState.currentLevel = 1;
                     gameState.baseSpeed = 5;
                 }
@@ -318,7 +330,7 @@
             }
         }
 
-        // Старт игры
+        // Запуск игры
         initControls();
         initGame();
         gameLoop();
