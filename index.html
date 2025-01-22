@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Hardcore Ball Challenge</title>
+    <title>Final Ball Challenge</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body {
@@ -56,190 +56,209 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        const LEVELS = [
-            { // Level 1
-                speed: 9,
-                direction: 1,
-                platforms: [
-                    {x: 0,    y: 500, w: 300, spikes: 0.4, moving: 'vertical'},
-                    {x: 400,  y: 400, w: 150, spikes: 0.6},
-                    {x: 600,  y: 350, w: 200, moving: 'horizontal'},
-                    {x: 900,  y: 450, w: 180, spikes: 0.8},
-                    {x: 1200, y: 300, w: 250, moving: 'vertical'}
-                ]
-            },
-            { // Level 2
-                speed: 11,
-                direction: -1,
-                platforms: [
-                    {x: 0,    y: 300, w: 200, spikes: 0.7},
-                    {x: 300,  y: 400, w: 150, moving: 'horizontal'},
-                    {x: 500,  y: 350, w: 180, spikes: 0.5},
-                    {x: 750,  y: 450, w: 220, moving: 'vertical'},
-                    {x: 1050, y: 300, w: 150, spikes: 0.9}
-                ]
-            },
-            { // Level 3
-                speed: 13,
-                direction: 1,
-                platforms: [
-                    {x: 0,    y: 400, w: 250, moving: 'chaos'},
-                    {x: 350,  y: 300, w: 150, spikes: 0.8},
-                    {x: 550,  y: 450, w: 200, moving: 'horizontal'},
-                    {x: 800,  y: 350, w: 180, spikes: 0.6},
-                    {x: 1050, y: 400, w: 150, moving: 'vertical'}
-                ]
-            }
-        ];
-
+        const LEVELS = {};
         let gameState = {
             currentLevel: 1,
             maxLevel: parseInt(localStorage.getItem('maxLevel')) || 1,
             isDead: false,
             platforms: [],
             scrollX: 0,
+            baseSpeed: 5,
+            currentSpeed: 5,
             ball: {
                 x: 100,
                 y: canvas.height * 0.5,
                 radius: 15,
-                color: '#FF5555',
+                color: '#00FF88',
                 velocityY: 0,
-                jumpsLeft: 1
+                jumpsLeft: 2
             }
         };
 
-        function initGame() {
-            const level = LEVELS[gameState.currentLevel - 1];
+        function generateLevel(levelNum) {
+            const features = {
+                reverse: levelNum % 2 === 0,
+                movingPlatforms: levelNum >= 2,
+                fire: levelNum >= 3,
+                speedBoost: levelNum >= 4
+            };
+
+            return {
+                direction: features.reverse ? -1 : 1,
+                platforms: generatePlatforms(levelNum, features),
+                features: features
+            };
+        }
+
+        function generatePlatforms(levelNum, features) {
+            const platforms = [];
+            let x = 0;
+            let y = canvas.height - 200;
             
-            gameState.platforms = level.platforms.map(p => {
+            const params = {
+                maxVerticalGap: 80,
+                minHorizontalSpacing: 200,
+                maxHorizontalSpacing: 300,
+                minWidth: 300,
+                maxWidth: 400
+            };
+
+            for(let i = 0; i < 8 + levelNum; i++) {
+                const w = params.minWidth + Math.random() * (params.maxWidth - params.minWidth);
+                const spacing = params.minHorizontalSpacing + Math.random() * 
+                              (params.maxHorizontalSpacing - params.minHorizontalSpacing);
+                
                 const platform = {
-                    x: p.x,
-                    y: p.y,
-                    w: p.w,
-                    height: 20,
-                    color: p.spikes ? '#FF4444' : '#34BDBD',
-                    spikes: p.spikes ? generateSpikes(p.w, p.spikes) : [],
-                    move: {
-                        type: p.moving,
-                        speed: 1.5 + Math.random() * 2,
-                        dir: Math.random() > 0.5 ? 1 : -1,
-                        minX: p.x - 50,
-                        maxX: p.x + 50,
-                        minY: p.y - 50,
-                        maxY: p.y + 50
-                    }
+                    x: x,
+                    y: y,
+                    w: w,
+                    spikes: Math.min(0.1 + (levelNum * 0.05), 0.5),
+                    moving: features.movingPlatforms && Math.random() > 0.7,
+                    moveOffset: 0,
+                    fire: features.fire && Math.random() > 0.8
                 };
-                return p.moving ? platform : {...platform, move: null};
-            });
+
+                platforms.push(platform);
+                x += w + spacing;
+                
+                y = Math.max(
+                    canvas.height - 350, 
+                    Math.min(
+                        canvas.height - 150, 
+                        y + (features.reverse ? -1 : 1) * (Math.random() * params.maxVerticalGap)
+                    )
+                );
+            }
+
+            return platforms;
+        }
+
+        function initGame() {
+            if(!LEVELS[gameState.currentLevel]) {
+                LEVELS[gameState.currentLevel] = generateLevel(gameState.currentLevel);
+            }
+            
+            const level = LEVELS[gameState.currentLevel];
+            
+            gameState.platforms = level.platforms.map(p => ({
+                ...p,
+                height: 20,
+                color: p.fire ? '#FF4444' : '#34BDBD',
+                spikes: generateSpikes(p.w, p.spikes),
+                spikeColor: p.fire ? '#FFA500' : '#FF4444'
+            }));
 
             gameState.scrollX = 0;
+            gameState.currentSpeed = gameState.baseSpeed + gameState.currentLevel;
             gameState.ball = {
                 x: level.direction === 1 ? 100 : canvas.width - 100,
                 y: canvas.height * 0.5,
                 velocityY: 0,
-                jumpsLeft: 1,
+                jumpsLeft: 2,
                 radius: 15,
-                color: '#FF5555'
+                color: '#00FF88'
             };
             
             gameState.isDead = false;
+            document.getElementById('deathScreen').style.display = 'none';
             document.getElementById('currentLevel').textContent = gameState.currentLevel;
             document.getElementById('maxLevel').textContent = gameState.maxLevel;
-            document.getElementById('deathScreen').style.display = 'none';
         }
 
         function generateSpikes(width, density) {
-            return Array.from({length: Math.floor(width/15 * density)}, (_,i) => ({
-                x: 10 + i * 15,
-                height: 20 + Math.random() * 30
+            return Array.from({length: Math.floor(width/40 * density)}, (_,i) => ({
+                x: 20 + i * 40,
+                width: 20,
+                height: 20
             }));
         }
 
         function updatePhysics() {
             if(gameState.isDead) return;
 
-            const level = LEVELS[gameState.currentLevel - 1];
-            gameState.scrollX += level.speed * level.direction;
+            const level = LEVELS[gameState.currentLevel];
+            
+            // Постепенное ускорение
+            gameState.currentSpeed *= 1.0005;
+            gameState.scrollX += gameState.currentSpeed * level.direction;
 
-            // Движение платформ
+            // Обновление движущихся платформ
             gameState.platforms.forEach(p => {
-                if(!p.move) return;
-                
-                switch(p.move.type) {
-                    case 'vertical':
-                        p.y += p.move.speed * p.move.dir;
-                        if(p.y > p.move.maxY || p.y < p.move.minY) p.move.dir *= -1;
-                        break;
-                        
-                    case 'horizontal':
-                        p.x += p.move.speed * p.move.dir;
-                        if(p.x > p.move.maxX || p.x < p.move.minX) p.move.dir *= -1;
-                        break;
-                        
-                    case 'chaos':
-                        p.x += p.move.speed * (Math.random() - 0.5);
-                        p.y += p.move.speed * (Math.random() - 0.5);
-                        break;
+                if(p.moving) {
+                    p.moveOffset = Math.sin(Date.now()/500) * 50;
                 }
             });
 
-            // Физика мяча
-            gameState.ball.velocityY += 0.8;
+            gameState.ball.velocityY += 0.7;
             gameState.ball.y += gameState.ball.velocityY;
 
-            // Коллизии
             let onGround = false;
             gameState.platforms.forEach(platform => {
-                const px = platform.x + (level.direction === 1 ? -gameState.scrollX : gameState.scrollX);
+                const px = platform.x + (level.direction === 1 ? -gameState.scrollX : gameState.scrollX) + platform.moveOffset;
                 
-                if(px < -platform.w || px > canvas.width) return;
-                
-                if(gameState.ball.x + gameState.ball.radius > px &&
-                   gameState.ball.x - gameState.ball.radius < px + platform.w &&
-                   gameState.ball.y + gameState.ball.radius > platform.y &&
-                   gameState.ball.y - gameState.ball.radius < platform.y + platform.height) {
-                       
-                    if(platform.spikes.length) {
-                        gameOver();
-                        return;
-                    }
-                    
+                if(checkPlatformCollision(px, platform)) {
+                    if(platform.color === '#FF4444') gameOver();
                     gameState.ball.velocityY = 0;
                     gameState.ball.y = platform.y - gameState.ball.radius;
                     onGround = true;
+                    gameState.ball.jumpsLeft = 2;
                 }
+
+                platform.spikes.forEach(spike => {
+                    const spikeX = px + spike.x;
+                    if(checkSpikeCollision(spikeX, spike, platform.y)) {
+                        gameOver();
+                        return;
+                    }
+                });
             });
 
-            gameState.ball.jumpsLeft = onGround ? 1 : gameState.ball.jumpsLeft;
-
-            // Смерть за экраном
             if(gameState.ball.y > canvas.height + 100) gameOver();
+        }
+
+        function checkPlatformCollision(px, platform) {
+            return gameState.ball.x + gameState.ball.radius > px &&
+                   gameState.ball.x - gameState.ball.radius < px + platform.w &&
+                   gameState.ball.y + gameState.ball.radius > platform.y &&
+                   gameState.ball.y - gameState.ball.radius < platform.y + platform.height;
+        }
+
+        function checkSpikeCollision(spikeX, spike, platformY) {
+            return gameState.ball.x > spikeX - 15 &&
+                   gameState.ball.x < spikeX + 15 &&
+                   gameState.ball.y + gameState.ball.radius > platformY - spike.height;
         }
 
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const level = LEVELS[gameState.currentLevel - 1];
+            const level = LEVELS[gameState.currentLevel];
 
-            // Платформы
             gameState.platforms.forEach(platform => {
-                const px = platform.x + (level.direction === 1 ? -gameState.scrollX : gameState.scrollX);
+                const px = platform.x + (level.direction === 1 ? -gameState.scrollX : gameState.scrollX) + platform.moveOffset;
                 
+                // Рисование платформы
                 ctx.fillStyle = platform.color;
                 ctx.fillRect(px, platform.y, platform.w, platform.height);
 
-                if(platform.spikes.length) {
-                    ctx.fillStyle = '#FF0000';
-                    platform.spikes.forEach(spike => {
-                        ctx.beginPath();
-                        ctx.moveTo(px + spike.x - 8, platform.y);
-                        ctx.lineTo(px + spike.x + 8, platform.y);
-                        ctx.lineTo(px + spike.x, platform.y - spike.height);
-                        ctx.fill();
-                    });
+                // Рисование шипов
+                ctx.fillStyle = platform.spikeColor;
+                platform.spikes.forEach(spike => {
+                    const spikeX = px + spike.x;
+                    ctx.beginPath();
+                    ctx.moveTo(spikeX - 10, platform.y);
+                    ctx.lineTo(spikeX + 10, platform.y);
+                    ctx.lineTo(spikeX, platform.y - spike.height);
+                    ctx.fill();
+                });
+
+                // Анимация огня
+                if(platform.fire) {
+                    ctx.fillStyle = `hsl(${Date.now() % 360}, 100%, 50%)`;
+                    ctx.fillRect(px, platform.y - 30, platform.w, 20);
                 }
             });
 
-            // Мяч
+            // Рисование мяча
             ctx.beginPath();
             ctx.arc(gameState.ball.x, gameState.ball.y, gameState.ball.radius, 0, Math.PI*2);
             ctx.fillStyle = gameState.ball.color;
@@ -258,7 +277,7 @@
                 }
 
                 if(gameState.ball.jumpsLeft > 0) {
-                    gameState.ball.velocityY = -16;
+                    gameState.ball.velocityY = -17;
                     gameState.ball.jumpsLeft--;
                 }
             };
@@ -286,19 +305,20 @@
         }
 
         function checkLevelComplete() {
-            if(Math.abs(gameState.scrollX) > 1500) {
-                if(gameState.currentLevel < LEVELS.length) {
-                    gameState.currentLevel++;
-                    initGame();
-                } else {
-                    alert("ТЫ ПРОШЕЛ ИГРУ!");
+            if(Math.abs(gameState.scrollX) > 2500 + gameState.currentLevel * 800) {
+                gameState.currentLevel++;
+                gameState.baseSpeed += 0.5;
+                
+                if(gameState.currentLevel > 10) {
+                    alert("ПОБЕДА! СЛЕДУЮЩИЙ РАУНД!");
                     gameState.currentLevel = 1;
-                    initGame();
+                    gameState.baseSpeed = 5;
                 }
+                initGame();
             }
         }
 
-        // Старт
+        // Старт игры
         initControls();
         initGame();
         gameLoop();
