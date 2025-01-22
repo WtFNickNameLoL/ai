@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ball Adventure Pro</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a1a;
+        }
+        #gameCanvas {
+            background: linear-gradient(to bottom, #87CEEB 60%, #1a1a1a 100%);
+        }
+        #hud {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: Arial, sans-serif;
+            z-index: 100;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #deathScreen {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #FF0000;
+            font-size: 48px;
+            font-family: 'Impact', sans-serif;
+            text-shadow: 3px 3px 0 #000;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        Уровень: <span id="level">1</span><br>
+        Дистанция: <span id="distance">0</span>m<br>
+        Рекорд: <span id="highscore">0</span>m
+    </div>
+    <div id="deathScreen">
+        ПОТРАЧЕНО!<br>
+        <span style="font-size: 24px">Нажми ПРОБЕЛ чтобы продолжить</span>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Конфигурация игры
+        const BASE_SCROLL_SPEED = 5;
+        const CONFIG = {
+            GRAVITY: 0.8,
+            JUMP_FORCE: -18,
+            DOUBLE_JUMP_FORCE: -12,
+            PLATFORM_SPACING: 250,
+            FRICTION: 0.85,
+            MAX_JUMPS: 2,
+            LEVEL_UP_DISTANCE: 1000
+        };
+
+        // Состояние игры
+        let gameState = {
+            scrollX: 0,
+            distance: 0,
+            level: 1,
+            highscore: localStorage.getItem('highscore') || 0,
+            isDead: false,
+            platforms: [],
+            jumpsLeft: CONFIG.MAX_JUMPS,
+            currentScrollSpeed: BASE_SCROLL_SPEED
+        };
+
+        // Игровые объекты
+        const ball = {
+            x: canvas.width * 0.3,
+            y: canvas.height * 0.7,
+            radius: 15,
+            color: '#FF4444',
+            velocityX: 0,
+            velocityY: 0,
+            canJump: true
+        };
+
+        function initGame() {
+            gameState = {
+                scrollX: 0,
+                distance: 0,
+                level: 1,
+                isDead: false,
+                platforms: [],
+                jumpsLeft: CONFIG.MAX_JUMPS,
+                currentScrollSpeed: BASE_SCROLL_SPEED,
+                highscore: gameState.highscore
+            };
+
+            // Стартовая платформа
+            addPlatform(0, canvas.height - 50, canvas.width, 30, '#2ecc71');
+            
+            // Первые платформы
+            addPlatform(400, canvas.height - 180, 120, 20, '#3498db');
+            addPlatform(700, canvas.height - 220, 150, 20, '#3498db');
+            addPlatform(1000, canvas.height - 200, 130, 20, '#3498db');
+
+            generatePlatform();
+            generatePlatform();
+
+            ball.x = canvas.width * 0.3;
+            ball.y = canvas.height * 0.7;
+            ball.velocityX = 0;
+            ball.velocityY = 0;
+            ball.canJump = true;
+
+            document.getElementById('deathScreen').style.display = 'none';
+            updateHUD();
+        }
+
+        function addPlatform(x, y, width, height, color) {
+            gameState.platforms.push({
+                x: x,
+                y: y,
+                width: width,
+                height: height,
+                color: color
+            });
+        }
+
+        function generatePlatform() {
+            const lastPlatform = gameState.platforms[gameState.platforms.length-1];
+            const newX = lastPlatform.x + lastPlatform.width + CONFIG.PLATFORM_SPACING;
+            const newY = canvas.height - 180 - Math.random() * 100;
+            
+            addPlatform(newX, newY, 100 + Math.random() * 100, 20, '#3498db');
+        }
+
+        function updatePhysics() {
+            if(gameState.isDead) return;
+
+            // Автоскролл с ускорением
+            gameState.scrollX += gameState.currentScrollSpeed;
+            gameState.distance = Math.floor(gameState.scrollX);
+
+            // Повышение уровня и скорости
+            if(gameState.distance >= gameState.level * CONFIG.LEVEL_UP_DISTANCE) {
+                gameState.level++;
+                gameState.currentScrollSpeed = BASE_SCROLL_SPEED * (1 + (gameState.level-1)*0.15);
+            }
+
+            // Физика
+            ball.velocityY += CONFIG.GRAVITY;
+            ball.x += ball.velocityX;
+            ball.y += ball.velocityY;
+
+            // Коллизии
+            let onGround = false;
+            gameState.platforms.forEach(platform => {
+                if(checkCollision(platform)) {
+                    ball.velocityY = 0;
+                    ball.y = platform.y - ball.radius;
+                    onGround = true;
+                }
+            });
+
+            // Обновление прыжков
+            gameState.jumpsLeft = onGround ? CONFIG.MAX_JUMPS : gameState.jumpsLeft;
+            ball.canJump = onGround;
+
+            // Границы экрана
+            if(ball.y > canvas.height + 100 || ball.x - gameState.scrollX < 0) {
+                gameOver();
+            }
+
+            // Генерация платформ
+            const lastPlatform = gameState.platforms[gameState.platforms.length-1];
+            if(lastPlatform.x + lastPlatform.width < gameState.scrollX + canvas.width) {
+                generatePlatform();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Платформы
+            gameState.platforms.forEach(platform => {
+                ctx.fillStyle = platform.color;
+                ctx.fillRect(
+                    platform.x - gameState.scrollX,
+                    platform.y,
+                    platform.width,
+                    platform.height
+                );
+            });
+
+            // Мяч
+            ctx.beginPath();
+            ctx.arc(ball.x - gameState.scrollX, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = ball.color;
+            ctx.fill();
+        }
+
+        function initControls() {
+            window.addEventListener('keydown', e => {
+                if(e.code === 'Space' && gameState.jumpsLeft > 0) {
+                    ball.velocityY = gameState.jumpsLeft === CONFIG.MAX_JUMPS 
+                        ? CONFIG.JUMP_FORCE 
+                        : CONFIG.DOUBLE_JUMP_FORCE;
+                    gameState.jumpsLeft--;
+                }
+                
+                if(e.key === 'ArrowLeft') ball.velocityX = -8;
+                if(e.key === 'ArrowRight') ball.velocityX = 8;
+            });
+
+            window.addEventListener('keyup', e => {
+                if(e.key === 'ArrowLeft' || e.key === 'ArrowRight') ball.velocityX = 0;
+            });
+
+            window.addEventListener('keydown', e => {
+                if(gameState.isDead && e.code === 'Space') {
+                    if(gameState.distance > gameState.highscore) {
+                        gameState.highscore = gameState.distance;
+                        localStorage.setItem('highscore', gameState.highscore);
+                    }
+                    initGame();
+                }
+            });
+        }
+
+        function checkCollision(platform) {
+            return ball.x + ball.radius > platform.x &&
+                   ball.x - ball.radius < platform.x + platform.width &&
+                   ball.y + ball.radius > platform.y &&
+                   ball.y - ball.radius < platform.y + platform.height;
+        }
+
+        function gameOver() {
+            gameState.isDead = true;
+            document.getElementById('deathScreen').style.display = 'block';
+        }
+
+        function updateHUD() {
+            document.getElementById('distance').textContent = gameState.distance;
+            document.getElementById('highscore').textContent = gameState.highscore;
+            document.getElementById('level').textContent = gameState.level;
+        }
+
+        function gameLoop() {
+            if(!gameState.isDead) updatePhysics();
+            draw();
+            updateHUD();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Инициализация
+        document.getElementById('highscore').textContent = localStorage.getItem('highscore') || 0;
+        initControls();
+        initGame();
+        gameLoop();
+    </script>
+</body>
+</html>
